@@ -1,0 +1,11 @@
+[
+  {
+    "thread_id": "019cc49c-0918-7c11-9a8a-630c28b9b443",
+    "title": "Session search architecture discussion",
+    "created_at": 1772825086,
+    "rollout_path": "/home/kirill/p/ask-codex-sessions/tests/fixtures/current-session.jsonl",
+    "chunk_id": "019cc49c-0918-7c11-9a8a-630c28b9b443:4",
+    "score": 9.5,
+    "snippet": "For this project, I’d use Rust and keep the search local with SQLite, BM25, Gemini query planning, and Gemini reranking."
+  }
+]

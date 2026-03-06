@@ -1,1 +1,7 @@
 firebase-debug.log
+
+
+# Added by cargo
+
+/target
+.aider*

@@ -1,0 +1,9 @@
+pub mod cli;
+pub mod config;
+pub mod gemini;
+pub mod index;
+pub mod normalize;
+pub mod output;
+pub mod search;
+pub mod source;
+pub mod types;
