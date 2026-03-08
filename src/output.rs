@@ -111,6 +111,10 @@ pub fn build_output_artifact(
 
 pub fn write_output_artifact(base_dir: &Path, artifact: &OutputArtifact) -> Result<PathBuf> {
     let output_dir = base_dir.join("ask-codex-session-responses");
+    write_output_artifact_in_dir(&output_dir, artifact)
+}
+
+pub fn write_output_artifact_in_dir(output_dir: &Path, artifact: &OutputArtifact) -> Result<PathBuf> {
     fs::create_dir_all(&output_dir)?;
     let filename = format!(
         "{}-{:?}-{:?}-{}.json",
@@ -125,9 +129,13 @@ pub fn write_output_artifact(base_dir: &Path, artifact: &OutputArtifact) -> Resu
     .replace('+', "-")
     .replace('?', "");
     let path = output_dir.join(filename);
-    let json = serde_json::to_string_pretty(artifact)?;
+    let json = render_output_artifact(artifact)?;
     fs::write(&path, json)?;
     Ok(path)
+}
+
+pub fn render_output_artifact(artifact: &OutputArtifact) -> Result<String> {
+    Ok(serde_json::to_string_pretty(artifact)?)
 }
 
 fn slugify(query: &str) -> String {

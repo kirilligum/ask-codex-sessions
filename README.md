@@ -13,11 +13,9 @@ The tool reads:
 - thread metadata from `~/.codex/state_5.sqlite`
 - rollout files from `~/.codex/sessions/`
 
-It writes search results as JSON artifacts into:
+By default, the command prints the JSON result itself to `stdout`.
 
-- `./ask-codex-session-responses/`
-
-By default, the command prints only the path to the JSON artifact on `stdout`.
+If you pass `-o, --out-dir <PATH>`, it writes a JSON artifact file into that directory and prints only the file path to `stdout`.
 
 ## What It Does
 
@@ -47,6 +45,12 @@ The public commands are named after the retrieval strategy they use.
 The current default Gemini model is:
 
 - `gemini-3-flash-preview`
+
+If you do not specify a mode, the CLI defaults to:
+
+- `bm25llm`
+- `--since-days 30`
+- `--answer`
 
 ## Requirements
 
@@ -169,7 +173,7 @@ cargo build
 Then run it with:
 
 ```bash
-cargo run -- help
+ask-codex-sessions help
 ```
 
 ## Build
@@ -185,16 +189,16 @@ You can also run everything directly with `cargo run -- ...`.
 Root help:
 
 ```bash
-cargo run -- help
+ask-codex-sessions help
 ```
 
 Per-command help:
 
 ```bash
-cargo run -- bm25llm --help
-cargo run -- bm25llm-recent --help
-cargo run -- bm25 --help
-cargo run -- llm --help
+ask-codex-sessions bm25llm --help
+ask-codex-sessions bm25llm-recent --help
+ask-codex-sessions bm25 --help
+ask-codex-sessions llm --help
 ```
 
 ## Quick Start
@@ -202,30 +206,47 @@ cargo run -- llm --help
 General hybrid search:
 
 ```bash
-cargo run -- bm25llm "firebase orchestration interface"
+ask-codex-sessions "firebase orchestration interface"
 ```
 
 Latest-spec search:
 
 ```bash
-cargo run -- bm25llm-recent "what was the latest spec for the interface"
+ask-codex-sessions bm25llm-recent "what was the latest spec for the interface"
 ```
 
 Pure BM25 search:
 
 ```bash
-cargo run -- bm25 "rust sqlite gemini"
+ask-codex-sessions bm25 "rust sqlite gemini"
 ```
 
 LLM-only chunk review:
 
 ```bash
-cargo run -- llm "find discussions about simplifying the interface"
+ask-codex-sessions llm "find discussions about simplifying the interface"
 ```
 
 ## Common Flags
 
 All search commands support:
+
+- `-d`, `--debug`
+  - print the pipeline stages and ranking details to `stderr`
+- `-s`, `--sum`
+  - add summaries to the JSON output
+- `-a`, `--answer`
+  - add a direct answer to the original query in the JSON output
+- `-C`, `--cwd <PATH>`
+  - restrict search to sessions whose recorded `cwd` exactly matches this path
+- `-t`, `--since-days <DAYS>`
+  - only search sessions newer than the given number of days
+- `-l`, `--limit <N>`
+  - cap the number of ranked results
+- `-o`, `--out-dir <PATH>`
+  - write the JSON result into that directory and print only the file path
+
+Long forms still work:
 
 - `--cwd <PATH>`
   - restrict search to sessions whose recorded `cwd` exactly matches this path
@@ -233,37 +254,57 @@ All search commands support:
   - only search sessions newer than the given number of days
 - `--limit <N>`
   - cap the number of ranked results
+- `--out-dir <PATH>`
+  - write the JSON result into that directory and print only the file path
 - `--debug`
-  - print the pipeline stages and ranking details to `stderr`
 - `--sum`
-  - add summaries to the JSON output
-- `-a`, `--answer`
-  - add a direct answer to the original query in the JSON output
+- `--answer`
 
 Examples:
 
 ```bash
-cargo run -- bm25llm --cwd /home/kirill/p/ask-codex-sessions --since-days 90 --limit 3 "firebase orchestration interface"
+ask-codex-sessions -C /home/kirill/p/ask-codex-sessions -t 90 -l 3 "firebase orchestration interface"
 ```
 
 ```bash
-cargo run -- bm25llm-recent --sum -a --cwd /home/kirill/p/ask-codex-sessions --since-days 90 "what tech stack did we choose for the session search tool"
+ask-codex-sessions bm25llm-recent -s -a -C /home/kirill/p/ask-codex-sessions -t 90 "what tech stack did we choose for the session search tool"
 ```
 
 ```bash
-cargo run -- bm25 --debug --cwd /home/kirill/p/ask-codex-sessions --since-days 90 "rust sqlite gemini"
+ask-codex-sessions bm25 -d -C /home/kirill/p/ask-codex-sessions -t 90 "rust sqlite gemini"
+```
+
+```bash
+ask-codex-sessions -o ./responses -C /home/kirill/p/ask-codex-sessions -t 90 "firebase orchestration interface"
 ```
 
 ## Output
 
-Every non-debug run writes a JSON artifact to:
+Default behavior:
 
-- `./ask-codex-session-responses/<timestamp>-<preset>-<mode>-<slug>.json`
+- print pretty JSON to `stdout`
 
-The command prints the file path, for example:
+Example:
 
 ```bash
-/home/kirill/p/ask-codex-sessions/ask-codex-session-responses/20260307T023647Z-Search-Lexical-what-tech-stack-did-we-choose-for-the-session-search-tool.json
+ask-codex-sessions "firebase orchestration interface" | jq '.results[0]'
+```
+
+File output behavior with `-o, --out-dir`:
+
+- write a JSON artifact into the given directory
+- print only the file path to `stdout`
+
+Example:
+
+```bash
+ask-codex-sessions -o ./responses "firebase orchestration interface"
+```
+
+Example output:
+
+```bash
+./responses/20260307T023647Z-Search-Hybrid-firebase-orchestration-interface.json
 ```
 
 The JSON contains:
@@ -294,34 +335,40 @@ Each result contains:
 
 Typical `jq` usage:
 
-Show the top hit:
+Show the top hit directly from stdout:
 
 ```bash
-jq '.results[0]' ask-codex-session-responses/<file>.json
+ask-codex-sessions "firebase orchestration interface" | jq '.results[0]'
+```
+
+Show the top hit from a saved artifact path:
+
+```bash
+jq '.results[0]' "$(ask-codex-sessions -o ./responses 'firebase orchestration interface')"
 ```
 
 Show the main fields you usually care about:
 
 ```bash
-jq '.results[] | {rank, session_id, resume_command, session_path, text_id, quote}' ask-codex-session-responses/<file>.json
+jq '.results[] | {rank, session_id, resume_command, session_path, text_id, quote}' "$(ask-codex-sessions -o ./responses 'firebase orchestration interface')"
 ```
 
 Show only summaries:
 
 ```bash
-jq '{summary, answer, results: [.results[] | {rank, text_id, summary}]}' ask-codex-session-responses/<file>.json
+jq '{summary, answer, results: [.results[] | {rank, text_id, summary}]}' "$(ask-codex-sessions -o ./responses -s -a 'firebase orchestration interface')"
 ```
 
 Extract the rollout path for direct inspection:
 
 ```bash
-jq -r '.results[0].session_path' ask-codex-session-responses/<file>.json
+jq -r '.results[0].session_path' "$(ask-codex-sessions -o ./responses 'firebase orchestration interface')"
 ```
 
 Resume the top session in Codex:
 
 ```bash
-codex resume "$(jq -r '.results[0].session_id' ask-codex-session-responses/<file>.json)"
+codex resume "$(jq -r '.results[0].session_id' "$(ask-codex-sessions -o ./responses 'firebase orchestration interface')")"
 ```
 
 ## How It Works
@@ -654,11 +701,11 @@ cargo test test_llm_search_mode_finds_current_session_by_chunk_judging --test ll
 If you just want the best default:
 
 ```bash
-cargo run -- bm25llm --since-days 90 "your question here"
+ask-codex-sessions "your question here"
 ```
 
 If you specifically care about the newest decision:
 
 ```bash
-cargo run -- bm25llm-recent --since-days 90 "your question here"
+ask-codex-sessions bm25llm-recent --since-days 90 "your question here"
 ```

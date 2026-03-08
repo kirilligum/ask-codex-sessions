@@ -1,5 +1,8 @@
 // TEST-008
-use ask_codex_sessions::output::{build_output_artifact, write_output_artifact, OutputArtifact};
+use ask_codex_sessions::output::{
+    build_output_artifact, render_output_artifact, write_output_artifact,
+    write_output_artifact_in_dir, OutputArtifact,
+};
 use ask_codex_sessions::types::{
     QueryPreset, ResultSummary, ScoreDetails, SearchMode, SearchRequest, SearchResult, SummaryBundle,
 };
@@ -60,11 +63,21 @@ fn test_output_contains_json_artifact_with_resume_path_and_quote() {
         datetime!(2026-03-06 20:30:00 UTC),
     )
     .expect("output artifact should build");
+    let rendered = render_output_artifact(&artifact).expect("artifact should render");
+    let rendered_json: OutputArtifact =
+        serde_json::from_str(&rendered).expect("rendered stdout JSON should parse");
+    assert_eq!(rendered_json.query, request.query);
+
     let dir = tempdir().expect("tempdir should exist");
     let path = write_output_artifact(dir.path(), &artifact).expect("artifact should write");
+    let direct_dir = tempdir().expect("direct output dir should exist");
+    let direct_path =
+        write_output_artifact_in_dir(direct_dir.path(), &artifact).expect("artifact should write to explicit dir");
 
     assert!(path.exists());
     assert!(path.parent().unwrap().ends_with("ask-codex-session-responses"));
+    assert!(direct_path.exists());
+    assert_eq!(direct_path.parent(), Some(direct_dir.path()));
     let content = fs::read_to_string(&path).expect("artifact file should be readable");
     let written: OutputArtifact = serde_json::from_str(&content).expect("artifact file should parse");
 

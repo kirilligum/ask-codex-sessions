@@ -1,6 +1,6 @@
 // TEST-001
-use ask_codex_sessions::cli::{Cli, Command};
-use clap::{CommandFactory, Parser};
+use ask_codex_sessions::cli::{try_parse_cli_from, Cli, Command};
+use clap::CommandFactory;
 
 #[test]
 fn test_cli_has_search_and_latest_spec() {
@@ -15,19 +15,22 @@ fn test_cli_has_search_and_latest_spec() {
     assert!(help.contains("Pure local BM25/FTS search, no Gemini calls"));
     assert!(help.contains("LLM-only chunk review: Gemini judges filtered chunks directly"));
     assert!(help.contains("Examples:"));
+    assert!(help.contains("Defaults to bm25llm with --since-days 30 and --answer"));
 
-    let parsed = Cli::try_parse_from([
+    let parsed = try_parse_cli_from([
         "ask-codex-sessions",
         "bm25llm-recent",
-        "--debug",
-        "--sum",
+        "-d",
+        "-s",
         "-a",
-        "--cwd",
+        "-C",
         "/tmp/project",
-        "--since-days",
+        "-t",
         "30",
-        "--limit",
+        "-l",
         "2",
+        "-o",
+        "/tmp/out",
         "latest interface spec",
     ])
     .expect("bm25llm-recent should parse");
@@ -40,7 +43,26 @@ fn test_cli_has_search_and_latest_spec() {
             assert_eq!(args.cwd.as_deref(), Some(std::path::Path::new("/tmp/project")));
             assert_eq!(args.since_days, Some(30));
             assert_eq!(args.limit, 2);
+            assert_eq!(args.out_dir.as_deref(), Some(std::path::Path::new("/tmp/out")));
         }
         other => panic!("expected bm25llm-recent command, got {other:?}"),
+    }
+
+    let defaulted = try_parse_cli_from([
+        "ask-codex-sessions",
+        "-C",
+        "/tmp/project",
+        "latest interface spec",
+    ])
+    .expect("default mode should parse");
+    match defaulted.command {
+        Command::Bm25llm(args) => {
+            assert_eq!(args.query, "latest interface spec");
+            assert!(args.answer);
+            assert_eq!(args.since_days, Some(30));
+            assert_eq!(args.cwd.as_deref(), Some(std::path::Path::new("/tmp/project")));
+            assert!(args.out_dir.is_none());
+        }
+        other => panic!("expected default bm25llm command, got {other:?}"),
     }
 }

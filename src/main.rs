@@ -1,16 +1,15 @@
-use ask_codex_sessions::cli::{Cli, Command};
+use ask_codex_sessions::cli::{parse_cli, Command};
 use ask_codex_sessions::config::Config;
 use ask_codex_sessions::debug::DebugEvents;
 use ask_codex_sessions::gemini::GeminiClient;
-use ask_codex_sessions::output::{build_output_artifact, write_output_artifact};
+use ask_codex_sessions::output::{build_output_artifact, render_output_artifact, write_output_artifact_in_dir};
 use ask_codex_sessions::search::SearchPipeline;
 use ask_codex_sessions::types::{QueryPreset, SearchMode, SearchRequest};
-use clap::Parser;
 use std::path::PathBuf;
 use time::OffsetDateTime;
 
 fn main() -> anyhow::Result<()> {
-    let cli = Cli::parse();
+    let cli = parse_cli();
     let config = Config::default();
     let (preset, mode, args) = match cli.command {
         Command::Bm25llm(args) => (QueryPreset::Search, SearchMode::Hybrid, args),
@@ -54,8 +53,12 @@ fn main() -> anyhow::Result<()> {
         answer.as_deref(),
         OffsetDateTime::now_utc(),
     )?;
-    let output_path = write_output_artifact(&std::env::current_dir()?, &artifact)?;
-    println!("{}", output_path.display());
+    if let Some(out_dir) = args.out_dir {
+        let output_path = write_output_artifact_in_dir(&out_dir, &artifact)?;
+        println!("{}", output_path.display());
+    } else {
+        println!("{}", render_output_artifact(&artifact)?);
+    }
     Ok(())
 }
 

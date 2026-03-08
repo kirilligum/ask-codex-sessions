@@ -1,12 +1,15 @@
+use std::ffi::OsString;
 use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
 #[command(name = "ask-codex-sessions")]
-#[command(about = "Search prior Codex CLI sessions stored locally under ~/.codex.")]
 #[command(
-    after_help = "Examples:\n  ask-codex-sessions bm25llm --cwd /path/to/repo --since-days 90 \"firebase orchestration interface\"\n  ask-codex-sessions bm25llm-recent --sum -a \"what was the latest spec for the interface\"\n  ask-codex-sessions bm25 --limit 3 \"rust sqlite gemini\"\n  ask-codex-sessions llm --debug \"find discussions about simplifying the interface\""
+    about = "Search prior Codex CLI sessions stored locally under ~/.codex. Defaults to bm25llm with --since-days 30 and --answer when no mode is given."
+)]
+#[command(
+    after_help = "Examples:\n  ask-codex-sessions -C /path/to/repo -t 90 \"firebase orchestration interface\" | jq '.results[0]'\n  ask-codex-sessions -o ./responses -C /path/to/repo -t 90 \"firebase orchestration interface\"\n  jq '.results[0]' \"$(ask-codex-sessions -o ./responses 'firebase orchestration interface')\"\n  ask-codex-sessions bm25llm-recent -s -a \"what was the latest spec for the interface\"\n  ask-codex-sessions bm25 -l 3 \"rust sqlite gemini\"\n  ask-codex-sessions llm -d \"find discussions about simplifying the interface\""
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -25,6 +28,9 @@ pub enum Command {
     Llm(QueryArgs),
 }
 
+const DEFAULT_SUBCOMMAND: &str = "bm25llm";
+const DEFAULT_SINCE_DAYS: &str = "30";
+
 #[derive(Debug, Clone, Args, PartialEq, Eq)]
 pub struct QueryArgs {
     #[arg(
@@ -33,10 +39,10 @@ pub struct QueryArgs {
     )]
     pub query: String,
 
-    #[arg(long, help = "Print pipeline stages, plans, and ranking details to stderr")]
+    #[arg(short = 'd', long, help = "Print pipeline stages, plans, and ranking details to stderr")]
     pub debug: bool,
 
-    #[arg(long = "sum", help = "Add summary fields to the JSON output artifact")]
+    #[arg(short = 's', long = "sum", help = "Add summary fields to the JSON output artifact")]
     pub sum: bool,
 
     #[arg(
@@ -46,12 +52,81 @@ pub struct QueryArgs {
     )]
     pub answer: bool,
 
-    #[arg(long, value_name = "PATH", help = "Restrict search to sessions from this working directory or repo path")]
+    #[arg(short = 'C', long, value_name = "PATH", help = "Restrict search to sessions from this working directory or repo path")]
     pub cwd: Option<PathBuf>,
 
-    #[arg(long, value_name = "DAYS", help = "Only search sessions from the last N days")]
+    #[arg(short = 't', long, value_name = "DAYS", help = "Only search sessions from the last N days")]
     pub since_days: Option<u32>,
 
-    #[arg(long, default_value_t = 5, help = "Maximum number of ranked results to return")]
+    #[arg(short = 'l', long, default_value_t = 5, help = "Maximum number of ranked results to return")]
     pub limit: usize,
+
+    #[arg(short = 'o', long = "out-dir", value_name = "PATH", help = "Write the JSON artifact into this directory and print only the file path")]
+    pub out_dir: Option<PathBuf>,
+}
+
+pub fn parse_cli() -> Cli {
+    Cli::parse_from(preprocess_args(std::env::args_os()))
+}
+
+pub fn try_parse_cli_from<I, T>(args: I) -> Result<Cli, clap::Error>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString>,
+{
+    Cli::try_parse_from(preprocess_args(args))
+}
+
+fn preprocess_args<I, T>(args: I) -> Vec<OsString>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString>,
+{
+    let args = args.into_iter().map(Into::into).collect::<Vec<_>>();
+    if args.len() <= 1 {
+        return args;
+    }
+
+    let first = args
+        .get(1)
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    if matches!(
+        first,
+        "bm25llm" | "bm25llm-recent" | "bm25" | "llm" | "help" | "-h" | "--help"
+    ) {
+        return args;
+    }
+
+    let mut rewritten = Vec::with_capacity(args.len() + 4);
+    rewritten.push(args[0].clone());
+    rewritten.push(OsString::from(DEFAULT_SUBCOMMAND));
+
+    if !has_flag(&args[1..], ["-a", "--answer"].as_slice()) {
+        rewritten.push(OsString::from("-a"));
+    }
+
+    if !has_flag_with_value(&args[1..], ["-t", "--since-days"].as_slice()) {
+        rewritten.push(OsString::from("--since-days"));
+        rewritten.push(OsString::from(DEFAULT_SINCE_DAYS));
+    }
+
+    rewritten.extend_from_slice(&args[1..]);
+    rewritten
+}
+
+fn has_flag(args: &[OsString], names: &[&str]) -> bool {
+    args.iter()
+        .any(|arg| arg.to_str().is_some_and(|value| names.contains(&value)))
+}
+
+fn has_flag_with_value(args: &[OsString], names: &[&str]) -> bool {
+    args.iter().any(|arg| {
+        arg.to_str().is_some_and(|value| {
+            names.contains(&value)
+                || names
+                    .iter()
+                    .any(|name| value.starts_with(&format!("{name}=")))
+        })
+    })
 }
