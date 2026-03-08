@@ -59,6 +59,63 @@ The current code defaults to:
 - state DB: `/home/kirill/.codex/state_5.sqlite`
 - sessions root: `/home/kirill/.codex/sessions`
 
+## Install
+
+If you do not already have Rust and Cargo:
+
+1. Install Rust with `rustup`:
+
+```bash
+curl https://sh.rustup.rs -sSf | sh
+```
+
+2. Restart your shell, or load Cargo into the current shell:
+
+```bash
+source "$HOME/.cargo/env"
+```
+
+3. Verify the tools are available:
+
+```bash
+rustc --version
+cargo --version
+```
+
+4. Build and install this project from the repository root:
+
+```bash
+cargo install --path .
+```
+
+That installs the binary into:
+
+- `~/.cargo/bin/ask-codex-sessions`
+
+If `~/.cargo/bin` is not already on your `PATH`, add this line to your shell config:
+
+```bash
+export PATH="$HOME/.cargo/bin:$PATH"
+```
+
+Then restart your shell and verify the binary:
+
+```bash
+ask-codex-sessions help
+```
+
+If you already have Rust and only want to build locally without installing:
+
+```bash
+cargo build
+```
+
+Then run it with:
+
+```bash
+cargo run -- help
+```
+
 ## Build
 
 ```bash
