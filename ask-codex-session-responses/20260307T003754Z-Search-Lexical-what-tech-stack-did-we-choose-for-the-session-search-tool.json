@@ -1,0 +1,53 @@
+{
+  "query": "what tech stack did we choose for the session search tool",
+  "preset": "Search",
+  "mode": "Lexical",
+  "created_at": "2026-03-07T00:37:54.441622026Z",
+  "cwd_filter": "/home/kirill/p/ask-codex-sessions",
+  "timeframe_start": 1765067818,
+  "result_count": 1,
+  "summary": "The session search tool is implemented in Rust and utilizes a hybrid search architecture that combines SQLite (FTS/BM25) with Gemini LLM for query planning and reranking.",
+  "answer": "The session search tool uses a hybrid tech stack consisting of Rust, Gemini for query planning and reranking, and SQLite with FTS/BM25 for lexical search.",
+  "results": [
+    {
+      "rank": 1,
+      "session_id": "019cc49c-0918-7c11-9a8a-630c28b9b443",
+      "thread_id": "019cc49c-0918-7c11-9a8a-630c28b9b443",
+      "resume_command": "codex resume 019cc49c-0918-7c11-9a8a-630c28b9b443",
+      "session_path": "/home/kirill/.codex/sessions/2026/03/06/rollout-2026-03-06T11-24-46-019cc49c-0918-7c11-9a8a-630c28b9b443.jsonl",
+      "text_id": "019cc49c-0918-7c11-9a8a-630c28b9b443:30",
+      "source_start_line": 1568,
+      "source_end_line": 1700,
+      "title": "i'd like to find a conversation in the previous codex cli sessions related to a certain topic. so it would take my prompt (for example \"find discussions on making the firebase-orchestration interface simpler and more elegant and summarize the findings) and run against all past session in a certain timeframe for a certain folder/git repo? to reduce the number of session, specify that they should contain keywords for example \"interface\" and \"orchestration\", i'm looking for what was the latest spec i discussed regarding the interface. \nwhat do you think of this project?",
+      "created_at": 1772825086,
+      "created_at_iso": "2026-03-06T19:24:46.000000000Z",
+      "quote": "... we choose for the session search tool\" cargo run -- llm-search --cwd /home/kirill/p/ask-codex-sessions --since-days 90 --limit 3 \"what tech stack did we choose for the session search tool\" ``` What each does: - `search`: hybrid, Gemini query plan + SQLite FTS/BM25 + Gemini rerank - `latest-spec`: same hybrid path, with stronger recency bias - `lexical`: no ...",
+      "summary": "The discussion details a hybrid search implementation using Rust, Gemini for query planning and reranking, and SQLite for lexical search with BM25 scoring.",
+      "score": {
+        "final_score": 19.895421222012068,
+        "bm25_raw": -8.045421222012067,
+        "phrase_matches": 2,
+        "entity_matches": 6,
+        "dialogue_matches": 0,
+        "recency_bonus": 0.35,
+        "llm_rerank_position": null,
+        "llm_batch_index": null,
+        "llm_batch_rank": null
+      },
+      "metadata": {
+        "word_count": 402,
+        "entity_count": 263,
+        "matched_terms": [
+          "tech stack",
+          "session search tool",
+          "tech",
+          "stack",
+          "choose",
+          "session",
+          "search",
+          "tool"
+        ]
+      }
+    }
+  ]
+}

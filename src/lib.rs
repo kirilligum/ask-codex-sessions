@@ -1,5 +1,6 @@
 pub mod cli;
 pub mod config;
+pub mod debug;
 pub mod gemini;
 pub mod index;
 pub mod normalize;

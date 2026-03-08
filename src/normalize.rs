@@ -17,6 +17,7 @@ enum Speaker {
 struct VisibleMessage {
     speaker: Speaker,
     text: String,
+    line_number: usize,
 }
 
 pub fn normalize_thread(thread: &ThreadMeta) -> Result<Vec<Chunk>> {
@@ -25,11 +26,11 @@ pub fn normalize_thread(thread: &ThreadMeta) -> Result<Vec<Chunk>> {
     let reader = BufReader::new(file);
 
     let mut messages = Vec::new();
-    for line in reader.lines() {
+    for (index, line) in reader.lines().enumerate() {
         let line = line?;
         let value: Value = serde_json::from_str(&line)
             .with_context(|| format!("invalid rollout JSON in {}", thread.rollout_path.display()))?;
-        if let Some(message) = visible_message(&value) {
+        if let Some(message) = visible_message(&value, index + 1) {
             messages.push(message);
         }
     }
@@ -37,7 +38,7 @@ pub fn normalize_thread(thread: &ThreadMeta) -> Result<Vec<Chunk>> {
     build_chunks(thread, &messages)
 }
 
-fn visible_message(value: &Value) -> Option<VisibleMessage> {
+fn visible_message(value: &Value, line_number: usize) -> Option<VisibleMessage> {
     let payload = value.get("payload")?;
     if value.get("type")?.as_str()? != "response_item" || payload.get("type")?.as_str()? != "message" {
         return None;
@@ -72,20 +73,37 @@ fn visible_message(value: &Value) -> Option<VisibleMessage> {
         return None;
     }
 
-    Some(VisibleMessage { speaker, text })
+    Some(VisibleMessage {
+        speaker,
+        text,
+        line_number,
+    })
 }
 
 fn build_chunks(thread: &ThreadMeta, messages: &[VisibleMessage]) -> Result<Vec<Chunk>> {
     let mut chunks = Vec::new();
-    let mut current_user: Option<String> = None;
+    let mut current_user: Option<VisibleMessage> = None;
     let mut assistant_messages = Vec::new();
 
     let flush = |chunks: &mut Vec<Chunk>,
-                 current_user: &mut Option<String>,
-                 assistant_messages: &mut Vec<String>| {
-        if let Some(user_text) = current_user.take() {
-            let mut dialogue_parts = vec![user_text];
-            dialogue_parts.append(assistant_messages);
+                 current_user: &mut Option<VisibleMessage>,
+                 assistant_messages: &mut Vec<VisibleMessage>| {
+        if let Some(user_message) = current_user.take() {
+            let start_line = user_message.line_number;
+            let end_line = assistant_messages
+                .last()
+                .map(|message| message.line_number)
+                .unwrap_or(start_line);
+            let user_text = user_message.text;
+            let assistant_text = assistant_messages
+                .iter()
+                .map(|message| message.text.clone())
+                .collect::<Vec<_>>()
+                .join("\n\n");
+            let mut dialogue_parts = vec![user_text.clone()];
+            if !assistant_text.is_empty() {
+                dialogue_parts.push(assistant_text.clone());
+            }
             let dialogue_text = dialogue_parts.join("\n\n");
             if !dialogue_text.trim().is_empty() {
                 let ordinal = chunks.len();
@@ -93,11 +111,16 @@ fn build_chunks(thread: &ThreadMeta, messages: &[VisibleMessage]) -> Result<Vec<
                     chunk_id: format!("{}:{ordinal}", thread.thread_id),
                     thread_id: thread.thread_id.clone(),
                     ordinal,
+                    source_start_line: start_line,
+                    source_end_line: end_line,
+                    user_text,
+                    assistant_text,
                     entity_text: extract_entity_text(&dialogue_text),
                     dialogue_text,
                     created_at: thread.created_at,
                 });
             }
+            assistant_messages.clear();
         }
     };
 
@@ -105,11 +128,11 @@ fn build_chunks(thread: &ThreadMeta, messages: &[VisibleMessage]) -> Result<Vec<
         match message.speaker {
             Speaker::User => {
                 flush(&mut chunks, &mut current_user, &mut assistant_messages);
-                current_user = Some(message.text.clone());
+                current_user = Some(message.clone());
             }
             Speaker::Assistant => {
                 if current_user.is_some() {
-                    assistant_messages.push(message.text.clone());
+                    assistant_messages.push(message.clone());
                 }
             }
         }
@@ -133,7 +156,7 @@ fn extract_entity_text(text: &str) -> String {
 
     for capture in backtick_re().captures_iter(text) {
         if let Some(value) = capture.get(1).map(|entry| entry.as_str().trim()) {
-            if !value.is_empty() {
+            if is_entity_like(value) {
                 entities.insert(value.to_string());
             }
         }
@@ -151,6 +174,16 @@ fn extract_entity_text(text: &str) -> String {
     }
 
     entities.into_iter().collect::<Vec<_>>().join(" ")
+}
+
+fn is_entity_like(value: &str) -> bool {
+    !value.is_empty()
+        && (looks_technical(value)
+            || value.contains("--")
+            || value.contains("::")
+            || value.starts_with("cargo ")
+            || value.starts_with("codex ")
+            || value.starts_with("gemini "))
 }
 
 fn looks_technical(value: &str) -> bool {

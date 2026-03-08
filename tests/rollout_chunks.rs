@@ -18,6 +18,11 @@ fn test_rollout_becomes_dialogue_chunks_with_entity_text() {
     assert!(!chunks.is_empty());
     assert!(chunks.iter().all(|chunk| !chunk.dialogue_text.contains("# AGENTS.md instructions for")));
     assert!(chunks.iter().all(|chunk| !chunk.dialogue_text.contains("I’m checking a few primary sources on search-tool behavior before recommending a stack")));
+    assert!(chunks.iter().all(|chunk| chunk.source_start_line > 0));
+    assert!(chunks.iter().all(|chunk| chunk.source_end_line >= chunk.source_start_line));
     assert!(chunks.iter().any(|chunk| chunk.entity_text.contains("state_5.sqlite")));
+    assert!(chunks
+        .iter()
+        .all(|chunk| !chunk.entity_text.contains("what tech stack did we choose for the codex session search tool")));
     assert!(chunks.iter().any(|chunk| chunk.dialogue_text.contains("Rust")));
 }

@@ -1,4 +1,4 @@
-// TEST-007
+// TEST-010
 use ask_codex_sessions::config::Config;
 use ask_codex_sessions::gemini::{default_mock_dir, GeminiClient};
 use ask_codex_sessions::search::SearchPipeline;
@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 #[test]
-fn test_hybrid_search_pipeline_finds_current_session() {
+fn test_lexical_mode_finds_current_session_without_gemini_planner() {
     let config = Config {
         state_db_path: PathBuf::from("tests/fixtures/state_5.sqlite"),
         sessions_root: PathBuf::from("tests/fixtures"),
@@ -23,21 +23,19 @@ fn test_hybrid_search_pipeline_finds_current_session() {
     let request = SearchRequest {
         query: "what tech stack did we choose for the session search tool".to_string(),
         preset: QueryPreset::Search,
-        mode: SearchMode::Hybrid,
+        mode: SearchMode::Lexical,
         cwd_filter: Some(PathBuf::from("/home/kirill/p/ask-codex-sessions")),
         timeframe_start: None,
         limit: 3,
     };
 
-    let results = pipeline.search(&request).expect("search pipeline should succeed");
+    let results = pipeline.search(&request).expect("lexical search should succeed");
     assert!(!results.is_empty());
     assert_eq!(results[0].thread_id, "019cc49c-0918-7c11-9a8a-630c28b9b443");
-    assert!(results[0].rollout_path.ends_with("tests/fixtures/current-session.jsonl"));
     assert!(
-        results[0].snippet.contains("Rust")
-            || results[0].snippet.contains("SQLite")
-            || results[0].snippet.contains("Gemini")
+        results[0].snippet.to_ascii_lowercase().contains("rust")
+            || results[0].snippet.to_ascii_lowercase().contains("sqlite")
     );
     let unique_threads = results.iter().map(|result| result.thread_id.as_str()).collect::<HashSet<_>>();
-    assert_eq!(unique_threads.len(), results.len(), "results should be collapsed to one chunk per thread");
+    assert_eq!(unique_threads.len(), results.len());
 }

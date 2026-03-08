@@ -1,9 +1,10 @@
 use ask_codex_sessions::cli::{Cli, Command};
 use ask_codex_sessions::config::Config;
+use ask_codex_sessions::debug::DebugEvents;
 use ask_codex_sessions::gemini::GeminiClient;
-use ask_codex_sessions::output::render_output;
+use ask_codex_sessions::output::{build_output_artifact, write_output_artifact};
 use ask_codex_sessions::search::SearchPipeline;
-use ask_codex_sessions::types::{QueryPreset, SearchRequest};
+use ask_codex_sessions::types::{QueryPreset, SearchMode, SearchRequest};
 use clap::Parser;
 use std::path::PathBuf;
 use time::OffsetDateTime;
@@ -11,28 +12,50 @@ use time::OffsetDateTime;
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let config = Config::default();
-    let gemini = GeminiClient::new(config.gemini_model.clone());
-    let pipeline = SearchPipeline::new(config.clone(), gemini);
+    let (preset, mode, args) = match cli.command {
+        Command::Bm25llm(args) => (QueryPreset::Search, SearchMode::Hybrid, args),
+        Command::Bm25llmRecent(args) => (QueryPreset::LatestSpec, SearchMode::Hybrid, args),
+        Command::Bm25(args) => (QueryPreset::Search, SearchMode::Lexical, args),
+        Command::Llm(args) => (QueryPreset::Search, SearchMode::Llm, args),
+    };
+    let debug = if args.debug {
+        DebugEvents::enabled()
+    } else {
+        DebugEvents::disabled()
+    };
+    let gemini = GeminiClient::new(config.gemini_model.clone()).with_debug(debug.clone());
+    let pipeline = SearchPipeline::new(config.clone(), gemini).with_debug(debug);
 
-    let request = match cli.command {
-        Command::Search(args) => SearchRequest {
-            query: args.query,
-            preset: QueryPreset::Search,
-            cwd_filter: Some(resolve_cwd(args.cwd)?),
-            timeframe_start: since_days_to_unix(args.since_days)?,
-            limit: args.limit,
-        },
-        Command::LatestSpec(args) => SearchRequest {
-            query: args.query,
-            preset: QueryPreset::LatestSpec,
-            cwd_filter: Some(resolve_cwd(args.cwd)?),
-            timeframe_start: since_days_to_unix(args.since_days)?,
-            limit: args.limit,
-        },
+    let request = SearchRequest {
+        query: args.query,
+        preset,
+        mode,
+        cwd_filter: Some(resolve_cwd(args.cwd)?),
+        timeframe_start: since_days_to_unix(args.since_days)?,
+        limit: args.limit,
     };
 
     let results = pipeline.search(&request)?;
-    println!("{}", render_output(&request.query, &results)?);
+    let synthesis_client = GeminiClient::new(config.gemini_model.clone());
+    let summaries = if args.sum {
+        Some(synthesis_client.summarize_results(&request.query, &results)?)
+    } else {
+        None
+    };
+    let answer = if args.answer {
+        Some(synthesis_client.answer_query(&request.query, &results)?)
+    } else {
+        None
+    };
+    let artifact = build_output_artifact(
+        &request,
+        &results,
+        summaries.as_ref(),
+        answer.as_deref(),
+        OffsetDateTime::now_utc(),
+    )?;
+    let output_path = write_output_artifact(&std::env::current_dir()?, &artifact)?;
+    println!("{}", output_path.display());
     Ok(())
 }
 

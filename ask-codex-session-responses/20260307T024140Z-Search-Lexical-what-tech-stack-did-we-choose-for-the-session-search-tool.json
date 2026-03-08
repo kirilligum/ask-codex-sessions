@@ -1,0 +1,53 @@
+{
+  "query": "what tech stack did we choose for the session search tool",
+  "preset": "Search",
+  "mode": "Lexical",
+  "created_at": "2026-03-07T02:41:40.366251893Z",
+  "cwd_filter": "/home/kirill/p/ask-codex-sessions",
+  "timeframe_start": 1765075300,
+  "result_count": 1,
+  "summary": null,
+  "answer": null,
+  "results": [
+    {
+      "rank": 1,
+      "session_id": "019cc49c-0918-7c11-9a8a-630c28b9b443",
+      "thread_id": "019cc49c-0918-7c11-9a8a-630c28b9b443",
+      "resume_command": "codex resume 019cc49c-0918-7c11-9a8a-630c28b9b443",
+      "session_path": "/home/kirill/.codex/sessions/2026/03/06/rollout-2026-03-06T11-24-46-019cc49c-0918-7c11-9a8a-630c28b9b443.jsonl",
+      "text_id": "019cc49c-0918-7c11-9a8a-630c28b9b443:31",
+      "source_start_line": 1705,
+      "source_end_line": 1712,
+      "title": "i'd like to find a conversation in the previous codex cli sessions related to a certain topic. so it would take my prompt (for example \"find discussions on making the firebase-orchestration interface simpler and more elegant and summarize the findings) and run against all past session in a certain timeframe for a certain folder/git repo? to reduce the number of session, specify that they should contain keywords for example \"interface\" and \"orchestration\", i'm looking for what was the latest spec i discussed regarding the interface. \nwhat do you think of this project?",
+      "created_at": 1772825086,
+      "created_at_iso": "2026-03-06T19:24:46.000000000Z",
+      "quote": "... 1, \"session_id\": \"019cc49c-0918-7c11-9a8a-630c28b9b443\", \"thread_id\": \"019cc49c-0918-7c11-9a8a-630c28b9b443\", \"resume_command\": \"codex resume 019cc49c-0918-7c11-9a8a-630c28b9b443\", \"session_path\": \"/home/kirill/.codex/sessions/2026/03/06/rollout-2026-03-06T11-24-46-019cc49c-0918-7c11-9a8a-630c28b9b443.jsonl\", \"text_id\": \"019cc49c-0918-7c11-9a8a-630c28b9b443:5\", \"quote\": \"what would be good tech stack for this ... should we use c++ ? rust? ...\", \"score\": { \"final\": 12.73, \"bm25\": 4.91, \"phrase_bonus\": 2.0, \"entity_bonus\": 1.25, \"recency_bonus\": 0.35, \"llm_rerank_position\": 0 }, \"metadata\": { \"created_at\": 1772825086, \"title\": \"i'd like to find a conversation ...",
+      "summary": null,
+      "score": {
+        "final_score": 7.689299397739525,
+        "bm25_raw": -4.439299397739523,
+        "phrase_matches": 1,
+        "entity_matches": 6,
+        "dialogue_matches": 0,
+        "recency_bonus": 0.35,
+        "noise_penalty": 0.0,
+        "llm_rerank_position": null,
+        "llm_batch_index": null,
+        "llm_batch_rank": null
+      },
+      "metadata": {
+        "word_count": 613,
+        "entity_count": 342,
+        "matched_terms": [
+          "tech stack",
+          "tech",
+          "stack",
+          "choose",
+          "session",
+          "search",
+          "tool"
+        ]
+      }
+    }
+  ]
+}
