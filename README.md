@@ -69,10 +69,18 @@ If you do not already have Rust and Cargo:
 curl https://sh.rustup.rs -sSf | sh
 ```
 
-2. Restart your shell, or load Cargo into the current shell:
+2. Restart your shell, or load Cargo into the current shell.
+
+For `bash` or `zsh`:
 
 ```bash
 source "$HOME/.cargo/env"
+```
+
+For `fish`:
+
+```fish
+source "$HOME/.cargo/env.fish"
 ```
 
 3. Verify the tools are available:
@@ -92,16 +100,64 @@ That installs the binary into:
 
 - `~/.cargo/bin/ask-codex-sessions`
 
-If `~/.cargo/bin` is not already on your `PATH`, add this line to your shell config:
+If `~/.cargo/bin` is not already on your `PATH`, add it to your shell config.
+
+For `bash` or `zsh`:
 
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"
+```
+
+For `fish`:
+
+```fish
+fish_add_path "$HOME/.cargo/bin"
 ```
 
 Then restart your shell and verify the binary:
 
 ```bash
 ask-codex-sessions help
+```
+
+### Install from GitHub
+
+If you want the closest thing to an `npx`-style install-and-use flow, there are two practical options.
+
+Option 1: install directly from GitHub with Cargo:
+
+```bash
+cargo install --git https://github.com/kirilligum/ask-codex-sessions.git --locked
+```
+
+Then run:
+
+```bash
+ask-codex-sessions help
+```
+
+This is not exactly `npx`, but it is the closest built-in Rust workflow:
+
+- Cargo downloads the Git repository once and caches it
+- Cargo builds and installs the binary into `~/.cargo/bin`
+- later runs use the installed binary directly
+
+Option 2: use the repository installer script:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/kirilligum/ask-codex-sessions/main/install.sh)
+```
+
+That script:
+
+- checks that `cargo` exists
+- installs from the GitHub repository with `cargo install --git ... --locked`
+- prints the binary path and `PATH` setup reminder
+
+After either install path, normal usage is just:
+
+```bash
+ask-codex-sessions bm25llm "firebase orchestration interface"
 ```
 
 If you already have Rust and only want to build locally without installing:
