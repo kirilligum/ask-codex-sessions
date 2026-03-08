@@ -16,6 +16,9 @@ fn test_cli_has_search_and_latest_spec() {
     assert!(help.contains("LLM-only chunk review: Gemini judges filtered chunks directly"));
     assert!(help.contains("Examples:"));
     assert!(help.contains("Defaults to bm25llm with --since-days 30 and --answer"));
+    assert!(help.contains("Usage: ask-codex-sessions [OPTIONS] <QUERY>"));
+    assert!(help.contains("ask-codex-sessions bm25 -C /path/to/repo \"rust sqlite gemini\" | jq '.results[0]'"));
+    assert!(help.contains("file=\"$(ask-codex-sessions -o ./responses -C /path/to/repo -t 90 'firebase orchestration interface')\""));
 
     let parsed = try_parse_cli_from([
         "ask-codex-sessions",

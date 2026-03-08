@@ -9,7 +9,10 @@ use clap::{Args, Parser, Subcommand};
     about = "Search prior Codex CLI sessions stored locally under ~/.codex. Defaults to bm25llm with --since-days 30 and --answer when no mode is given."
 )]
 #[command(
-    after_help = "Examples:\n  ask-codex-sessions -C /path/to/repo -t 90 \"firebase orchestration interface\" | jq '.results[0]'\n  ask-codex-sessions -o ./responses -C /path/to/repo -t 90 \"firebase orchestration interface\"\n  jq '.results[0]' \"$(ask-codex-sessions -o ./responses 'firebase orchestration interface')\"\n  ask-codex-sessions bm25llm-recent -s -a \"what was the latest spec for the interface\"\n  ask-codex-sessions bm25 -l 3 \"rust sqlite gemini\"\n  ask-codex-sessions llm -d \"find discussions about simplifying the interface\""
+    override_usage = "ask-codex-sessions [OPTIONS] <QUERY>\n       ask-codex-sessions <COMMAND>"
+)]
+#[command(
+    after_help = "Examples:\n  ask-codex-sessions -C /path/to/repo -t 90 \"firebase orchestration interface\" | jq '.results[0]'\n  ask-codex-sessions bm25 -C /path/to/repo \"rust sqlite gemini\" | jq '.results[0]'\n  file=\"$(ask-codex-sessions -o ./responses -C /path/to/repo -t 90 'firebase orchestration interface')\"\n  jq '.results[0]' \"$file\"\n  ask-codex-sessions bm25llm-recent -s -a \"what was the latest spec for the interface\"\n  ask-codex-sessions llm -d \"find discussions about simplifying the interface\""
 )]
 pub struct Cli {
     #[command(subcommand)]

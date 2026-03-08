@@ -8,10 +8,7 @@ It is designed for questions like:
 - "Find earlier discussions about making the interface simpler."
 - "Show me the exact session and quote where we chose Rust."
 
-The tool reads:
-
-- thread metadata from `~/.codex/state_5.sqlite`
-- rollout files from `~/.codex/sessions/`
+The tool reads thread metadata from `~/.codex/state_5.sqlite`, then follows the rollout paths stored there to the JSONL session files under `~/.codex/sessions/`.
 
 By default, the command prints the JSON result itself to `stdout`.
 
@@ -51,6 +48,17 @@ If you do not specify a mode, the CLI defaults to:
 - `bm25llm`
 - `--since-days 30`
 - `--answer`
+
+Choose a mode like this:
+
+- no Gemini configured yet
+  - use `bm25`
+- best general search quality
+  - use the default invocation or `bm25llm`
+- newest relevant discussion or latest spec
+  - use `bm25llm-recent`
+- most semantic, most expensive scan
+  - use `llm`
 
 ## Requirements
 
@@ -121,7 +129,7 @@ fish_add_path "$HOME/.cargo/bin"
 Then restart your shell and verify the binary:
 
 ```bash
-ask-codex-sessions help
+ask-codex-sessions --help
 ```
 
 ### Install from GitHub
@@ -137,7 +145,7 @@ cargo install --git https://github.com/kirilligum/ask-codex-sessions.git --locke
 Then run:
 
 ```bash
-ask-codex-sessions help
+ask-codex-sessions --help
 ```
 
 This is not exactly `npx`, but it is the closest built-in Rust workflow:
@@ -173,7 +181,7 @@ cargo build
 Then run it with:
 
 ```bash
-ask-codex-sessions help
+cargo run -- --help
 ```
 
 ## Build
@@ -189,7 +197,7 @@ You can also run everything directly with `cargo run -- ...`.
 Root help:
 
 ```bash
-ask-codex-sessions help
+ask-codex-sessions --help
 ```
 
 Per-command help:
@@ -203,28 +211,29 @@ ask-codex-sessions llm --help
 
 ## Quick Start
 
-General hybrid search:
+Fastest smoke test, no Gemini required:
+
+```bash
+ask-codex-sessions bm25 "rust sqlite gemini" | jq '.results[0]'
+```
+
+Best default, requires Gemini:
 
 ```bash
 ask-codex-sessions "firebase orchestration interface"
 ```
 
-Latest-spec search:
+Newest relevant discussion or latest spec, requires Gemini:
 
 ```bash
 ask-codex-sessions bm25llm-recent "what was the latest spec for the interface"
 ```
 
-Pure BM25 search:
+Saved artifact plus `jq` workflow:
 
 ```bash
-ask-codex-sessions bm25 "rust sqlite gemini"
-```
-
-LLM-only chunk review:
-
-```bash
-ask-codex-sessions llm "find discussions about simplifying the interface"
+file="$(ask-codex-sessions -o ./responses 'firebase orchestration interface')"
+jq '.results[0]' "$file"
 ```
 
 ## Common Flags
@@ -320,6 +329,7 @@ Each result contains:
 - `rank`
 - `session_id`
 - `thread_id`
+  - currently the same value as `session_id`
 - `resume_command`
 - `session_path`
 - `text_id`
@@ -344,31 +354,36 @@ ask-codex-sessions "firebase orchestration interface" | jq '.results[0]'
 Show the top hit from a saved artifact path:
 
 ```bash
-jq '.results[0]' "$(ask-codex-sessions -o ./responses 'firebase orchestration interface')"
+file="$(ask-codex-sessions -o ./responses 'firebase orchestration interface')"
+jq '.results[0]' "$file"
 ```
 
 Show the main fields you usually care about:
 
 ```bash
-jq '.results[] | {rank, session_id, resume_command, session_path, text_id, quote}' "$(ask-codex-sessions -o ./responses 'firebase orchestration interface')"
+file="$(ask-codex-sessions -o ./responses 'firebase orchestration interface')"
+jq '.results[] | {rank, session_id, resume_command, session_path, text_id, quote}' "$file"
 ```
 
 Show only summaries:
 
 ```bash
-jq '{summary, answer, results: [.results[] | {rank, text_id, summary}]}' "$(ask-codex-sessions -o ./responses -s -a 'firebase orchestration interface')"
+file="$(ask-codex-sessions -o ./responses -s -a 'firebase orchestration interface')"
+jq '{summary, answer, results: [.results[] | {rank, text_id, summary}]}' "$file"
 ```
 
 Extract the rollout path for direct inspection:
 
 ```bash
-jq -r '.results[0].session_path' "$(ask-codex-sessions -o ./responses 'firebase orchestration interface')"
+file="$(ask-codex-sessions -o ./responses 'firebase orchestration interface')"
+jq -r '.results[0].session_path' "$file"
 ```
 
 Resume the top session in Codex:
 
 ```bash
-codex resume "$(jq -r '.results[0].session_id' "$(ask-codex-sessions -o ./responses 'firebase orchestration interface')")"
+file="$(ask-codex-sessions -o ./responses 'firebase orchestration interface')"
+codex resume "$(jq -r '.results[0].session_id' "$file")"
 ```
 
 ## How It Works
@@ -698,10 +713,22 @@ cargo test test_llm_search_mode_finds_current_session_by_chunk_judging --test ll
 
 ## Recommended Starting Point
 
-If you just want the best default:
+If you want the quickest local sanity check without Gemini:
+
+```bash
+ask-codex-sessions bm25 "rust sqlite gemini" | jq '.results[0]'
+```
+
+If you want the best default:
 
 ```bash
 ask-codex-sessions "your question here"
+```
+
+If you want the newest matching discussion rather than the best overall match:
+
+```bash
+ask-codex-sessions bm25llm-recent --since-days 90 "your question here"
 ```
 
 If you specifically care about the newest decision:
