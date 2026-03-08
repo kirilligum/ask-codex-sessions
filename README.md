@@ -280,19 +280,272 @@ At a high level:
 6. run one of the configured retrieval modes
 7. generate a JSON artifact with citations
 
-Mode details:
+Overview diagram:
 
-- `bm25llm`
-  - Gemini creates a constrained query plan from the filtered corpus
-  - SQLite FTS/BM25 retrieves candidates
-  - Gemini reranks those candidates
-- `bm25llm-recent`
-  - same as `bm25llm`
-  - ranking gives a stronger recency bonus
-- `bm25`
-  - uses local query expansion and SQLite FTS/BM25 only
-- `llm`
-  - Gemini judges filtered chunks directly instead of relying on SQLite ranking first
+```mermaid
+flowchart TD
+    A[User query] --> B[Load thread metadata from ~/.codex/state_5.sqlite]
+    B --> C[Filter by --cwd and --since-days]
+    C --> D[Read rollout JSONL files]
+    D --> E[Normalize into chunks]
+    E --> F[Extract entity text]
+    F --> G[Build in-memory SQLite FTS index]
+    G --> H{Mode}
+    H --> I[bm25llm]
+    H --> J[bm25llm-recent]
+    H --> K[bm25]
+    H --> L[llm]
+    I --> M[Ranked chunks]
+    J --> M
+    K --> M
+    L --> M
+    M --> N[Collapse to one best chunk per thread]
+    N --> O[Build JSON artifact]
+```
+
+### Shared preprocessing and indexing
+
+Before any mode runs, the tool does the same setup work:
+
+- it loads all threads from the Codex `threads` table
+- it filters by:
+  - exact `cwd`
+  - minimum creation time derived from `--since-days`
+- it parses each rollout JSONL file and keeps visible user/assistant messages
+- it ignores assistant `commentary` messages and known boilerplate blocks
+- it groups messages into chunks:
+  - one user message
+  - followed by the assistant response block that belongs to that user message
+- it records:
+  - `thread_id`
+  - `chunk_id`
+  - rollout line numbers
+  - `user_text`
+  - `assistant_text`
+  - full `dialogue_text`
+  - extracted `entity_text`
+
+Entity extraction is intentionally simple and exact-match oriented. It pulls out:
+
+- code-like backticked values
+- absolute paths
+- technical tokens such as commands, identifiers, filenames, and mixed-case strings
+
+The search index is an in-memory SQLite database with:
+
+- `sessions`
+- `chunks`
+- `fts_chunks`
+
+`fts_chunks` indexes three fields:
+
+- `user_text`
+- `assistant_text`
+- `entity_text`
+
+The BM25 weights currently favor assistant and entity text over user text:
+
+- user field weight: `0.0`
+- assistant field weight: `1.0`
+- entity field weight: `1.3`
+
+That design tries to rank answers and exact technical anchors above restatements of the original question.
+
+### Algorithm: `bm25llm`
+
+`bm25llm` is the main hybrid mode.
+
+Detailed flow:
+
+1. Build the shared filtered chunk set.
+2. Mine observed terms from the filtered corpus.
+3. Ask Gemini to create a constrained query plan:
+   - keywords
+   - phrases
+   - only using query terms and observed terms
+4. Convert that plan into an SQLite FTS query.
+5. Run BM25/FTS search.
+6. Apply local score adjustments:
+   - phrase matches
+   - entity matches
+   - assistant-side keyword matches
+   - small recency boost
+   - transcript / structured-dump penalties
+7. Keep the top candidate set.
+8. Ask Gemini to rerank those candidates.
+9. Collapse to one best chunk per thread.
+10. Build a cited JSON artifact.
+
+Important implementation details:
+
+- Gemini does not search the whole corpus directly in this mode.
+- Gemini is used twice:
+  - once to build the query plan
+  - once to rerank candidate chunks
+- local ranking penalties try to demote:
+  - pasted command transcripts
+  - JSON dumps
+  - chunks that simply echo the search query
+
+```mermaid
+flowchart TD
+    A[Query] --> B[Observed term mining]
+    B --> C[Gemini query plan]
+    C --> D[FTS query builder]
+    D --> E[SQLite BM25 search]
+    E --> F[Local score adjustments]
+    F --> G[Top candidate set]
+    G --> H[Gemini rerank]
+    H --> I[Best chunk per thread]
+    I --> J[JSON artifact]
+```
+
+### Algorithm: `bm25llm-recent`
+
+`bm25llm-recent` is the same pipeline as `bm25llm`, but it pushes newer sessions upward more aggressively.
+
+The only intended ranking difference is recency weight:
+
+- `bm25llm`: recency bonus is scaled by `0.35`
+- `bm25llm-recent`: recency bonus is scaled by `1.5`
+
+Use it when the question is really asking:
+
+- what is the latest version
+- what changed most recently
+- what was the newest spec
+
+```mermaid
+flowchart TD
+    A[Query] --> B[Same hybrid pipeline as bm25llm]
+    B --> C[BM25 score + phrase/entity matches]
+    C --> D[Strong recency boost]
+    D --> E[Gemini rerank]
+    E --> F[Newest relevant chunk per thread rises]
+    F --> G[JSON artifact]
+```
+
+### Algorithm: `bm25`
+
+`bm25` avoids Gemini completely.
+
+Detailed flow:
+
+1. Build the shared filtered chunk set.
+2. Extract query terms locally.
+3. Choose the most useful primary query terms based on rarity in the filtered corpus.
+4. Mine additional local expansion terms from co-occurring assistant/entity text.
+5. Build a local query plan:
+   - keywords
+   - one main phrase when useful
+6. Run SQLite FTS/BM25 search.
+7. Apply local score adjustments:
+   - phrase matches
+   - entity matches
+   - assistant-side keyword matches
+   - small recency boost
+   - transcript penalties
+   - structured dump penalties
+   - query-echo penalties
+8. Collapse to one best chunk per thread.
+9. Build a cited JSON artifact.
+
+What this mode is good at:
+
+- fast local searching
+- exact terms
+- commands
+- file paths
+- identifiers
+
+What it is weaker at:
+
+- paraphrases
+- abstract questions
+- finding an answer chunk that uses very different wording than the query
+
+```mermaid
+flowchart TD
+    A[Query] --> B[Local term extraction]
+    B --> C[Primary term selection by rarity]
+    C --> D[Corpus-aware local expansion]
+    D --> E[Local query plan]
+    E --> F[SQLite BM25/FTS]
+    F --> G[Local penalties and boosts]
+    G --> H[Best chunk per thread]
+    H --> I[JSON artifact]
+```
+
+### Algorithm: `llm`
+
+`llm` skips SQLite retrieval as the first ranking step and lets Gemini judge chunk batches directly.
+
+Detailed flow:
+
+1. Build the shared filtered chunk set.
+2. Create a lightweight local query plan only for snippet/match labeling.
+3. Split all filtered chunks into batches.
+4. For each batch:
+   - send batch candidates to Gemini
+   - ask Gemini to order them for the query
+5. Turn the batch rank into a local score.
+6. Add the same recency bonus logic used by the other modes.
+7. Merge all batch-ranked chunks.
+8. Sort globally.
+9. Collapse to one best chunk per thread.
+10. Build a cited JSON artifact.
+
+This mode is more semantic than `bm25`, but slower and more expensive because Gemini sees far more raw chunk text.
+
+```mermaid
+flowchart TD
+    A[Query] --> B[Filtered chunks]
+    B --> C[Batch 1]
+    B --> D[Batch 2]
+    B --> E[Batch N]
+    C --> F[Gemini batch rerank]
+    D --> F
+    E --> F
+    F --> G[Convert batch ranks to scores]
+    G --> H[Add recency bonus]
+    H --> I[Global sort]
+    I --> J[Best chunk per thread]
+    J --> K[JSON artifact]
+```
+
+### Chunking and result selection
+
+No matter which mode is used, result packaging follows the same rules:
+
+- snippets are taken from the original chunk text, not invented text
+- every result includes:
+  - session id
+  - rollout path
+  - chunk id
+  - source line numbers
+  - quote
+- only one top chunk per thread is returned in the final ranked list
+
+That last rule is important. It means if five chunks from the same session are strong matches, the final output still shows that session only once.
+
+### Why the tool uses both BM25 and exact entities
+
+The implementation treats session search as two related problems:
+
+- lexical relevance
+  - does this chunk use the same words or phrases as the query?
+- exact technical anchoring
+  - does this chunk mention the exact path, command, identifier, or symbol the user cares about?
+
+That is why entity extraction is separate from normal dialogue text. A session may be relevant because it contains:
+
+- `state_5.sqlite`
+- `gemini-3-flash-preview`
+- `/home/kirill/.codex/sessions/...`
+- `cargo run --`
+- exact config names or identifiers
+
+Those exact strings are often more stable and more useful than broad natural-language similarity.
 
 ## Current Behavior and Limitations
 
