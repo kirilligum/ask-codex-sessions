@@ -236,6 +236,62 @@ file="$(ask-codex-sessions -o ./responses 'firebase orchestration interface')"
 jq '.results[0]' "$file"
 ```
 
+## Defaults
+
+There are two layers of defaults:
+
+- implicit defaults when you do not specify a mode at all
+- per-flag defaults that apply to every command
+
+When you run:
+
+```bash
+ask-codex-sessions "firebase orchestration interface"
+```
+
+the CLI rewrites that internally to the equivalent of:
+
+```bash
+ask-codex-sessions bm25llm -t 30 -a "firebase orchestration interface"
+```
+
+That means the no-mode default behavior is:
+
+- mode: `bm25llm`
+- timeframe: last `30` days
+- answer: enabled
+- summaries: disabled
+- debug: disabled
+- output: JSON printed to `stdout`
+- cwd filter: current working directory
+- result limit: `5`
+
+When you run an explicit mode such as `bm25`, `bm25llm`, `bm25llm-recent`, or `llm`, the defaults are:
+
+- mode: whatever you typed explicitly
+- timeframe: no time filter unless you pass `-t, --since-days`
+- answer: disabled unless you pass `-a, --answer`
+- summaries: disabled unless you pass `-s, --sum`
+- debug: disabled unless you pass `-d, --debug`
+- cwd filter: current working directory unless you pass `-C, --cwd`
+- result limit: `5`
+- output: JSON printed to `stdout` unless you pass `-o, --out-dir`
+
+Important details:
+
+- `-C, --cwd`
+  - default: the shell directory where you run the command
+  - behavior: exact path match against the session's recorded `cwd`
+- `-l, --limit`
+  - default: `5`
+- `-t, --since-days`
+  - default with no explicit mode: `30`
+  - default with an explicit mode: unset
+- `-o, --out-dir`
+  - default: unset
+  - unset means the full JSON goes to `stdout`
+  - set means a JSON file is written into that directory and only the file path is printed to `stdout`
+
 ## Common Flags
 
 All search commands support:

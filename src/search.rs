@@ -2,7 +2,7 @@ use crate::config::Config;
 use crate::debug::DebugEvents;
 use crate::gemini::GeminiClient;
 use crate::index::SearchIndex;
-use crate::normalize::normalize_thread;
+use crate::normalize::normalize_thread_with_stats;
 use crate::source::{filter_threads, load_threads};
 use crate::types::{
     Chunk, QueryPlan, QueryPreset, ScoreDetails, SearchCandidate, SearchMode, SearchRequest,
@@ -67,13 +67,18 @@ impl SearchPipeline {
         ));
 
         let normalize_started = Instant::now();
-        let (chunks, thread_lookup) = normalize_threads(filtered_threads)?;
+        let (chunks, thread_lookup) = normalize_threads(&self.debug, filtered_threads);
         self.debug.log(format!(
             "normalized {} chunks across {} threads in {}ms",
             chunks.len(),
             thread_lookup.len(),
             normalize_started.elapsed().as_millis()
         ));
+        if chunks.is_empty() {
+            self.debug
+                .log("no valid chunks remained after normalization; returning no results");
+            return Ok(Vec::new());
+        }
 
         let latest_spec = matches!(request.preset, QueryPreset::LatestSpec);
         let results = match request.mode {
@@ -245,17 +250,118 @@ fn normalize_whitespace(value: &str) -> String {
         .to_ascii_lowercase()
 }
 
-fn normalize_threads(filtered_threads: Vec<ThreadMeta>) -> Result<(Vec<Chunk>, HashMap<String, ThreadMeta>)> {
+fn normalize_threads(
+    debug: &DebugEvents,
+    filtered_threads: Vec<ThreadMeta>,
+) -> (Vec<Chunk>, HashMap<String, ThreadMeta>) {
     let mut chunks = Vec::new();
     let mut thread_lookup = HashMap::new();
+    let mut invalid_line_total = 0usize;
+    let mut invalid_line_threads = Vec::new();
+    let mut setup_only_threads = Vec::new();
+    let mut normalization_failures = Vec::new();
     for thread in filtered_threads {
-        let thread_chunks = normalize_thread(&thread)?;
-        if !thread_chunks.is_empty() {
-            thread_lookup.insert(thread.thread_id.clone(), thread.clone());
-            chunks.extend(thread_chunks);
+        match normalize_thread_with_stats(&thread) {
+            Ok(normalized) => {
+                if normalized.stats.skipped_invalid_lines > 0 {
+                    invalid_line_total += normalized.stats.skipped_invalid_lines;
+                    invalid_line_threads.push((
+                        thread.thread_id.clone(),
+                        thread.rollout_path.display().to_string(),
+                        normalized.stats.skipped_invalid_lines,
+                    ));
+                }
+                if !normalized.chunks.is_empty() {
+                    thread_lookup.insert(thread.thread_id.clone(), thread.clone());
+                    chunks.extend(normalized.chunks);
+                } else {
+                    setup_only_threads.push((
+                        thread.thread_id.clone(),
+                        thread.rollout_path.display().to_string(),
+                    ));
+                }
+            }
+            Err(error) => {
+                normalization_failures.push((
+                    thread.thread_id.clone(),
+                    thread.rollout_path.display().to_string(),
+                    format!("{error:#}"),
+                ));
+            }
         }
     }
-    Ok((chunks, thread_lookup))
+
+    if invalid_line_total > 0 {
+        debug.log(format!(
+            "skipped {} invalid rollout line(s) across {} thread(s): {}",
+            invalid_line_total,
+            invalid_line_threads.len(),
+            summarize_invalid_line_examples(&invalid_line_threads)
+        ));
+    }
+
+    if !setup_only_threads.is_empty() {
+        debug.log(format!(
+            "skipped {} thread(s) with only setup boilerplate or unsupported content: {}",
+            setup_only_threads.len(),
+            summarize_thread_examples(&setup_only_threads)
+        ));
+    }
+
+    if !normalization_failures.is_empty() {
+        debug.log(format!(
+            "skipped {} thread(s) because rollout normalization failed: {}",
+            normalization_failures.len(),
+            summarize_failed_examples(&normalization_failures)
+        ));
+    }
+
+    (chunks, thread_lookup)
+}
+
+fn summarize_invalid_line_examples(entries: &[(String, String, usize)]) -> String {
+    let preview = entries
+        .iter()
+        .take(3)
+        .map(|(thread_id, path, count)| format!("{thread_id} ({count} in {path})"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let remaining = entries.len().saturating_sub(3);
+    if remaining == 0 {
+        preview
+    } else {
+        format!("{preview}, +{remaining} more")
+    }
+}
+
+fn summarize_thread_examples(entries: &[(String, String)]) -> String {
+    let preview = entries
+        .iter()
+        .take(3)
+        .map(|(thread_id, path)| format!("{thread_id} ({path})"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let remaining = entries.len().saturating_sub(3);
+    if remaining == 0 {
+        preview
+    } else {
+        format!("{preview}, +{remaining} more")
+    }
+}
+
+fn summarize_failed_examples(entries: &[(String, String, String)]) -> String {
+    let preview = entries
+        .iter()
+        .take(3)
+        .map(|(thread_id, path, error)| format!("{thread_id} ({path}: {error})"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let remaining = entries.len().saturating_sub(3);
+    if remaining == 0 {
+        preview
+    } else {
+        format!("{preview}, +{remaining} more")
+    }
 }
 
 fn llm_rank_all_chunks(

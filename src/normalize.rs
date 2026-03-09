@@ -7,6 +7,17 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::sync::OnceLock;
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NormalizeStats {
+    pub skipped_invalid_lines: usize,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NormalizedThread {
+    pub chunks: Vec<Chunk>,
+    pub stats: NormalizeStats,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Speaker {
     User,
@@ -21,26 +32,54 @@ struct VisibleMessage {
 }
 
 pub fn normalize_thread(thread: &ThreadMeta) -> Result<Vec<Chunk>> {
+    Ok(normalize_thread_with_stats(thread)?.chunks)
+}
+
+pub fn normalize_thread_with_stats(thread: &ThreadMeta) -> Result<NormalizedThread> {
     let file = File::open(&thread.rollout_path)
         .with_context(|| format!("failed to open rollout file {}", thread.rollout_path.display()))?;
     let reader = BufReader::new(file);
 
     let mut messages = Vec::new();
+    let mut stats = NormalizeStats::default();
     for (index, line) in reader.lines().enumerate() {
         let line = line?;
-        let value: Value = serde_json::from_str(&line)
-            .with_context(|| format!("invalid rollout JSON in {}", thread.rollout_path.display()))?;
+        let candidate = line.trim_matches('\0').trim();
+        if candidate.is_empty() {
+            stats.skipped_invalid_lines += 1;
+            continue;
+        }
+        let value: Value = match serde_json::from_str(candidate) {
+            Ok(value) => value,
+            Err(_) => {
+                stats.skipped_invalid_lines += 1;
+                continue;
+            }
+        };
         if let Some(message) = visible_message(&value, index + 1) {
-            messages.push(message);
+            if !is_duplicate_message(messages.last(), &message) {
+                messages.push(message);
+            }
         }
     }
 
-    build_chunks(thread, &messages)
+    Ok(NormalizedThread {
+        chunks: build_chunks(thread, &messages)?,
+        stats,
+    })
 }
 
 fn visible_message(value: &Value, line_number: usize) -> Option<VisibleMessage> {
+    match value.get("type")?.as_str()? {
+        "response_item" => visible_response_item(value, line_number),
+        "event_msg" => visible_event_message(value, line_number),
+        _ => None,
+    }
+}
+
+fn visible_response_item(value: &Value, line_number: usize) -> Option<VisibleMessage> {
     let payload = value.get("payload")?;
-    if value.get("type")?.as_str()? != "response_item" || payload.get("type")?.as_str()? != "message" {
+    if payload.get("type")?.as_str()? != "message" {
         return None;
     }
 
@@ -64,12 +103,42 @@ fn visible_message(value: &Value, line_number: usize) -> Option<VisibleMessage> 
         }
     }
 
-    if parts.is_empty() {
-        return None;
-    }
+    visible_message_from_text(speaker, parts.join("\n\n"), line_number)
+}
 
-    let text = parts.join("\n\n");
-    if is_boilerplate(&text) {
+fn visible_event_message(value: &Value, line_number: usize) -> Option<VisibleMessage> {
+    let payload = value.get("payload")?;
+    let payload_type = payload.get("type")?.as_str()?;
+    match payload_type {
+        "user_message" => {
+            let text = payload.get("message")?.as_str()?.trim().to_string();
+            visible_message_from_text(Speaker::User, text, line_number)
+        }
+        "agent_message" => {
+            if payload.get("phase").and_then(Value::as_str) == Some("commentary") {
+                return None;
+            }
+            let text = payload.get("message")?.as_str()?.trim().to_string();
+            visible_message_from_text(Speaker::Assistant, text, line_number)
+        }
+        "task_complete" => {
+            let text = payload
+                .get("last_agent_message")
+                .and_then(Value::as_str)?
+                .trim()
+                .to_string();
+            visible_message_from_text(Speaker::Assistant, text, line_number)
+        }
+        _ => None,
+    }
+}
+
+fn visible_message_from_text(
+    speaker: Speaker,
+    text: String,
+    line_number: usize,
+) -> Option<VisibleMessage> {
+    if text.is_empty() || is_boilerplate(&text) {
         return None;
     }
 
@@ -78,6 +147,23 @@ fn visible_message(value: &Value, line_number: usize) -> Option<VisibleMessage> 
         text,
         line_number,
     })
+}
+
+fn is_duplicate_message(previous: Option<&VisibleMessage>, next: &VisibleMessage) -> bool {
+    let Some(previous) = previous else {
+        return false;
+    };
+
+    previous.speaker == next.speaker
+        && normalize_message_text(&previous.text) == normalize_message_text(&next.text)
+}
+
+fn normalize_message_text(text: &str) -> String {
+    text.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim()
+        .to_string()
 }
 
 fn build_chunks(thread: &ThreadMeta, messages: &[VisibleMessage]) -> Result<Vec<Chunk>> {
