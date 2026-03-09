@@ -12,7 +12,6 @@ fn test_llm_search_mode_finds_current_session_by_chunk_judging() {
         state_db_path: PathBuf::from("tests/fixtures/state_5.sqlite"),
         sessions_root: PathBuf::from("tests/fixtures"),
         gemini_model: "gemini-3-flash-preview".to_string(),
-        candidate_limit: 6,
         rerank_limit: 5,
     };
     let client = GeminiClient::with_mock_dir(

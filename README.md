@@ -259,6 +259,7 @@ All search commands support:
   - only searches sessions newer than the given number of days
 - `-l`, `--limit <N>`
   - default: `5`
+  - special case: `0` means no limit
   - caps the number of ranked results
 - `-o`, `--out-dir <PATH>`
   - default: unset

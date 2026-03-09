@@ -12,7 +12,6 @@ fn test_debug_trace_reports_pipeline_stages() {
         state_db_path: PathBuf::from("tests/fixtures/state_5.sqlite"),
         sessions_root: PathBuf::from("tests/fixtures"),
         gemini_model: "gemini-3-flash-preview".to_string(),
-        candidate_limit: 6,
         rerank_limit: 5,
     };
     let debug = DebugEvents::enabled();

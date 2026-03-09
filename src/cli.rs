@@ -12,7 +12,7 @@ use clap::{Args, Parser, Subcommand};
     override_usage = "ask-codex-sessions [OPTIONS] <QUERY>\n       ask-codex-sessions <COMMAND>"
 )]
 #[command(
-    after_help = "Defaults:\n  no mode given: bm25llm -t 30 -a\n  -C, --cwd: current working directory\n  -l, --limit: 5\n  -o, --out-dir: unset, so JSON is printed to stdout\n\nExamples:\n  ask-codex-sessions -C /path/to/repo -t 90 \"firebase orchestration interface\" | jq '.results[0]'\n  ask-codex-sessions bm25 -C /path/to/repo \"rust sqlite gemini\" | jq '.results[0]'\n  file=\"$(ask-codex-sessions -o ./responses -C /path/to/repo -t 90 'firebase orchestration interface')\"\n  jq '.results[0]' \"$file\"\n  ask-codex-sessions bm25llm-recent -s -a \"what was the latest spec for the interface\"\n  ask-codex-sessions llm -d \"find discussions about simplifying the interface\""
+    after_help = "Defaults:\n  no mode given: bm25llm -t 30 -a\n  -C, --cwd: current working directory\n  -l, --limit: 5 (0 means no limit)\n  -o, --out-dir: unset, so JSON is printed to stdout\n\nExamples:\n  ask-codex-sessions -C /path/to/repo -t 90 \"firebase orchestration interface\" | jq '.results[0]'\n  ask-codex-sessions bm25 -C /path/to/repo \"rust sqlite gemini\" | jq '.results[0]'\n  file=\"$(ask-codex-sessions -o ./responses -C /path/to/repo -t 90 'firebase orchestration interface')\"\n  jq '.results[0]' \"$file\"\n  ask-codex-sessions bm25llm-recent -s -a \"what was the latest spec for the interface\"\n  ask-codex-sessions llm -d \"find discussions about simplifying the interface\""
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -61,7 +61,7 @@ pub struct QueryArgs {
     #[arg(short = 't', long, value_name = "DAYS", help = "Only search sessions from the last N days [default: unset on explicit modes; 30 when no mode is given]")]
     pub since_days: Option<u32>,
 
-    #[arg(short = 'l', long, default_value_t = 5, help = "Maximum number of ranked results to return")]
+    #[arg(short = 'l', long, default_value_t = 5, help = "Maximum number of ranked results to return. Use 0 for no limit")]
     pub limit: usize,
 
     #[arg(short = 'o', long = "out-dir", value_name = "PATH", help = "Write the JSON artifact into this directory and print only the file path [default: unset, so JSON is printed to stdout]")]

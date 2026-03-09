@@ -120,12 +120,12 @@ impl SearchPipeline {
         self.debug.log(format!("fts query={sqlite_query}"));
 
         let search_started = Instant::now();
-        let mut candidates = index.search(
+        let candidates = index.search(
             &sqlite_query,
             &keyword_hits,
             &plan.phrases,
             latest_spec,
-            self.config.candidate_limit.max(request.limit),
+            effective_result_limit(request.limit, chunks.len()),
         )?;
         self.debug.log(format!(
             "fts search produced {} candidates in {}ms",
@@ -133,7 +133,6 @@ impl SearchPipeline {
             search_started.elapsed().as_millis()
         ));
         log_candidate_preview(&self.debug, &candidates);
-        candidates.truncate(self.config.candidate_limit);
 
         let ordered_indexes = self.gemini.rerank(&request.query, &candidates)?;
         let reranked = apply_rerank(candidates, &ordered_indexes);
@@ -163,7 +162,7 @@ impl SearchPipeline {
             &keyword_hits,
             &plan.phrases,
             latest_spec,
-            self.config.candidate_limit.max(request.limit),
+            effective_result_limit(request.limit, chunks.len()),
         )?;
         let mut candidates = candidates;
         apply_query_echo_penalty(&mut candidates, &request.query);
@@ -188,16 +187,15 @@ impl SearchPipeline {
             "llm-search query-plan keywords={:?} phrases={:?}",
             plan.keywords, plan.phrases
         ));
-        let mut candidates = llm_rank_all_chunks(
+        let candidates = llm_rank_all_chunks(
             &self.gemini,
             &self.debug,
             &request.query,
             chunks,
             latest_spec,
-            self.config.rerank_limit.max(8),
+            self.config.rerank_limit.max(1),
         )?;
         log_candidate_preview(&self.debug, &candidates);
-        candidates.truncate(self.config.candidate_limit.max(request.limit));
         Ok(materialize_results(candidates, thread_lookup, &plan, request.limit))
     }
 }
@@ -486,7 +484,7 @@ fn materialize_results(
     limit: usize,
 ) -> Vec<SearchResult> {
     let mut seen_threads = HashSet::new();
-    candidates
+    let results = candidates
         .into_iter()
         .filter_map(|candidate| {
             let thread = thread_lookup.get(&candidate.chunk.thread_id)?;
@@ -512,8 +510,21 @@ fn materialize_results(
                 entity_count,
             })
         })
-        .take(limit)
-        .collect()
+        .collect::<Vec<_>>();
+
+    if limit == 0 {
+        results
+    } else {
+        results.into_iter().take(limit).collect()
+    }
+}
+
+fn effective_result_limit(request_limit: usize, chunk_count: usize) -> usize {
+    if request_limit == 0 {
+        chunk_count.max(1)
+    } else {
+        request_limit.max(1)
+    }
 }
 
 fn matched_terms_for_chunk(chunk: &Chunk, plan: &QueryPlan) -> Vec<String> {

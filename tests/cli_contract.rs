@@ -19,7 +19,7 @@ fn test_cli_has_search_and_latest_spec() {
     assert!(help.contains("Defaults:"));
     assert!(help.contains("no mode given: bm25llm -t 30 -a"));
     assert!(help.contains("-C, --cwd: current working directory"));
-    assert!(help.contains("-l, --limit: 5"));
+    assert!(help.contains("-l, --limit: 5 (0 means no limit)"));
     assert!(help.contains("Usage: ask-codex-sessions [OPTIONS] <QUERY>"));
     assert!(help.contains("ask-codex-sessions bm25 -C /path/to/repo \"rust sqlite gemini\" | jq '.results[0]'"));
     assert!(help.contains("file=\"$(ask-codex-sessions -o ./responses -C /path/to/repo -t 90 'firebase orchestration interface')\""));

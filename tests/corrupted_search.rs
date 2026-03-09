@@ -72,7 +72,6 @@ fn test_search_skips_corrupted_thread_and_returns_good_results() {
         state_db_path: db_path,
         sessions_root: temp.path().to_path_buf(),
         gemini_model: "gemini-3-flash-preview".to_string(),
-        candidate_limit: 6,
         rerank_limit: 5,
     };
     let debug = DebugEvents::enabled();
